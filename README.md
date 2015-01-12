@@ -40,7 +40,7 @@ ALBUM_SQL;
 
 $artist_results = $db->query($artist_sql);
 while ($artist = $artist_results->fetch()) {
-    echo "{$artists['last_name']}, {$artists['first_name']}\n";
+    echo "{$artist['last_name']}, {$artist['first_name']}\n";
 
     $album_results = $db->query($album_sql, ['artist_id' => $artist['id']]);
     while ($album = $album_results->fetch()) {
@@ -89,7 +89,7 @@ while ($album = $album_results->fetch()) {
 
 $artists = $db->query($artist_sql);
 while ($artist = $artists->fetch()) {
-    echo "{$artists['last_name']}, {$artists['first_name']}\n";
+    echo "{$artist['last_name']}, {$artist['first_name']}\n";
 
     if (!isset($albums_by_artist_id[$artist['id']])) {
         continue;
@@ -227,7 +227,7 @@ while ($album = $album_results->fetch()) {
 
 $artists = $db->query($artist_sql, ['batch_num' => $batch_num]);
 while ($artist = $artists->fetch()) {
-    echo "{$artists['last_name']}, {$artists['first_name']}\n";
+    echo "{$artist['last_name']}, {$artist['first_name']}\n";
 
     if (!isset($albums_by_artist_id[$artist['id']])) {
         continue;
