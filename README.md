@@ -238,3 +238,18 @@ while ($artist = $artists->fetch()) {
     }
 }
 ```
+
+## Choose Your Tradeoff
+
+Once the batch processing is in place, the tradeoff between the number of queries
+versus memory consumption can be fine tuned.
+
+Fine tuning is as simple as benchmarking timing and memory consumption statistics
+when changing the size of the batches.  In most cases, the limitation is
+available memory.  In this case, we can decrease the size of the batches until
+each batch can safely run without hitting the memory limit.
+
+Keep in mind that setting a batch size to infinity is very similar to using
+the "Bulk Loading Technique", in which everything is loaded into memory.  Setting
+the batch size to one is very similar to using the "N+1 Technique", which
+requires individual queries for every primary data element.
