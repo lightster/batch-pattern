@@ -104,7 +104,8 @@ while ($artist = $artists->fetch()) {
 This solution, like the N+1 solution, works well for small data sets.  However,
 as the data set grows, the amount of memory the bulk load solution requires
 grows in a non-scaleable way.  The amount of memory consumed for such a solution
-can easily get into the hundreds of megabytes and even into the gigabytes, depending on the data set size.
+can easily get into the hundreds of megabytes and even into the gigabytes,
+depending on the data set size.
 
 ## A Solution: The Batch Pattern
 
@@ -131,7 +132,7 @@ $batch_table_sql = <<<TABLE_SQL
 CREATE TEMPORARY TABLE artist_batches
 (
     batch_num INTEGER NOT NULL
-        DEFAULT nextval('artist_batches_seq'::regclass) / ?batch_size?::integer,
+        DEFAULT (nextval('artist_batches_seq'::regclass) / ?batch_size?::integer) + 1,
     artist_id INTEGER NOT NULL
 )
 TABLE_SQL;
@@ -141,12 +142,99 @@ INSERT INTO artist_batches
 (
     artist_id
 )
-SELECT artist_id
+SELECT id
 FROM artists
 ORDER BY last_name, first_name
 POPULATOR_SQL;
 
+$batch_index_sql = <<<INDEX_SQL
+CREATE UNIQUE INDEX batch_num_id_idx
+    ON artist_batches
+    USING btree (batch_num, artist_id);
+CREATE UNIQUE INDEX id_idx
+    ON artist_batches
+    USING btree (artist_id);
+INDEX_SQL;
+
 $db->query($batch_seq_sql);
-$db->query($batch_table_sql, ['batch_size' => 25]);
+$db->query($batch_table_sql, ['batch_size' => 250]);
 $db->query($batch_populator_sql);
+$db->query($batch_index_sql);
+```
+
+### Processing Batches
+
+Once the batches are generated, we can start iterating through the batches
+fairly easily by grabbing the minimum and maximum batch numbers:
+
+```php
+$batch_num_sql = <<<BATCH_NUM_SQL
+SELECT
+    MIN(batch_num) AS min_batch_num,
+    MAX(batch_num) AS max_batch_num
+FROM artist_batches
+BATCH_NUM_SQL;
+
+$batch_nums = $db->getRow($batch_num_sql);
+$min_batch = $batch_nums['min_batch_num'];
+$max_batch = $batch_nums['max_batch_num'];
+
+if ($min_batch) {
+    for ($batch_num = $min_batch; $batch_num <= $max_batch; $batch_num++) {
+        $this->processBatch($batch_num);
+    }
+}
+```
+
+### Process a Single Batch
+
+Now that we are iterating through the batches, it is time we do something
+with a batch.  We can adapt some of the logic we used in the bulk loading
+technique to work with the batch pattern:
+
+```php
+// private function processBatch($batch_num)
+
+$artist_sql = <<<ARTIST_SQL
+SELECT *
+FROM artists
+WHERE EXISTS (
+        SELECT 1
+        FROM artist_batches batches
+        WHERE batches.batch_num = ?batch_num?
+            AND batches.artist_id = artists.id
+    )
+ORDER BY last_name, first_name
+ARTIST_SQL;
+
+$album_sql = <<<ALBUM_SQL
+SELECT *
+FROM albums
+WHERE EXISTS (
+        SELECT 1
+        FROM artist_batches batches
+        WHERE batches.batch_num = ?batch_num?
+            AND batches.artist_id = albums.artist_id
+    )
+ORDER BY title
+ALBUM_SQL;
+
+$album_results = $db->query($album_sql, ['batch_num' => $batch_num]);
+$albums_by_artist_id = [];
+while ($album = $album_results->fetch()) {
+    $albums_by_artist_id[$album['artist_id']][$album['id']] = $album;
+}
+
+$artists = $db->query($artist_sql, ['batch_num' => $batch_num]);
+while ($artist = $artists->fetch()) {
+    echo "{$artists['last_name']}, {$artists['first_name']}\n";
+
+    if (!isset($albums_by_artist_id[$artist['id']])) {
+        continue;
+    }
+
+    foreach ($albums_by_artist_id[$artist['id']] as $album) {
+        echo "> {$album['title']}\n";
+    }
+}
 ```
